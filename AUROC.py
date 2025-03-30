@@ -1,209 +1,112 @@
-# AUROC
-
-"""
-==================================================
-Multiclass Receiver Operating Characteristic (ROC)
-==================================================
-
-This example describes the use of the Receiver Operating Characteristic (ROC)
-metric to evaluate the quality of multiclass classifiers.
-
-ROC curves typically feature true positive rate (TPR) on the Y axis, and false
-positive rate (FPR) on the X axis. This means that the top left corner of the
-plot is the "ideal" point - a FPR of zero, and a TPR of one. This is not very
-realistic, but it does mean that a larger area under the curve (AUC) is usually
-better. The "steepness" of ROC curves is also important, since it is ideal to
-maximize the TPR while minimizing the FPR.
-
-ROC curves are typically used in binary classification, where the TPR and FPR
-can be defined unambiguously. In the case of multiclass classification, a notion
-of TPR or FPR is obtained only after binarizing the output. This can be done in
-2 different ways:
-
-- the One-vs-Rest scheme compares each class against all the others (assumed as
-  one);
-- the One-vs-One scheme compares every unique pairwise combination of classes.
-
-In this example we explore both schemes and demo the concepts of micro and macro
-averaging as different ways of summarizing the information of the multiclass ROC
-curves.
-
-.. note::
-
-    See :ref:`sphx_glr_auto_examples_model_selection_plot_roc_crossval.py` for
-    an extension of the present example estimating the variance of the ROC
-    curves and their respective AUC.
-"""
-
-# Authors: The scikit-learn developers
-# SPDX-License-Identifier: BSD-3-Clause
-
-# %%
-# Load and prepare data
-# =====================
-#
-# We import the :ref:`iris_dataset` which contains 3 classes, each one
-# corresponding to a type of iris plant. One class is linearly separable from
-# the other 2; the latter are **not** linearly separable from each other.
-#
-# Here we binarize the output and add noisy features to make the problem harder.
+#AUROC
 
 import numpy as np
-
-from sklearn.datasets import load_iris
-from sklearn.model_selection import train_test_split
-
-iris = load_iris()
-target_names = iris.target_names
-X, y = iris.data, iris.target
-y = iris.target_names[y]
-
-random_state = np.random.RandomState(0)
-n_samples, n_features = X.shape
-n_classes = len(np.unique(y))
-X = np.concatenate([X, random_state.randn(n_samples, 200 * n_features)], axis=1)
-(
-    X_train,
-    X_test,
-    y_train,
-    y_test,
-) = train_test_split(X, y, test_size=0.5, stratify=y, random_state=0)
-
-# %%
-# We train a :class:`~sklearn.linear_model.LogisticRegression` model which can
-# naturally handle multiclass problems, thanks to the use of the multinomial
-# formulation.
-
-from sklearn.linear_model import LogisticRegression
-
-classifier = LogisticRegression()
-y_score = classifier.fit(X_train, y_train).predict_proba(X_test)
-
-# %%
-# One-vs-Rest multiclass ROC
-# ==========================
-#
-# The One-vs-the-Rest (OvR) multiclass strategy, also known as one-vs-all,
-# consists in computing a ROC curve per each of the `n_classes`. In each step, a
-# given class is regarded as the positive class and the remaining classes are
-# regarded as the negative class as a bulk.
-#
-# .. note:: One should not confuse the OvR strategy used for the **evaluation**
-#     of multiclass classifiers with the OvR strategy used to **train** a
-#     multiclass classifier by fitting a set of binary classifiers (for instance
-#     via the :class:`~sklearn.multiclass.OneVsRestClassifier` meta-estimator).
-#     The OvR ROC evaluation can be used to scrutinize any kind of classification
-#     models irrespectively of how they were trained (see :ref:`multiclass`).
-#
-# In this section we use a :class:`~sklearn.preprocessing.LabelBinarizer` to
-# binarize the target by one-hot-encoding in a OvR fashion. This means that the
-# target of shape (`n_samples`,) is mapped to a target of shape (`n_samples`,
-# `n_classes`).
-
-from sklearn.preprocessing import LabelBinarizer
-
-label_binarizer = LabelBinarizer().fit(y_train)
-y_onehot_test = label_binarizer.transform(y_test)
-y_onehot_test.shape  # (n_samples, n_classes)
-
-# %%
-# We can as well easily check the encoding of a specific class:
-
-label_binarizer.transform(["virginica"])
-
-# %%
-# ROC curve showing a specific class
-# ----------------------------------
-#
-# In the following plot we show the resulting ROC curve when regarding the iris
-# flowers as either "virginica" (`class_id=2`) or "non-virginica" (the rest).
-
-class_of_interest = "virginica"
-class_id = np.flatnonzero(label_binarizer.classes_ == class_of_interest)[0]
-class_id
-
-# %%
+from sklearn.metrics import roc_curve, auc
+import pandas as pd
 import matplotlib.pyplot as plt
+import random
+random.seed(42)  # For reproducibility
 
-from sklearn.metrics import RocCurveDisplay
+# Load the edge list data
+edge_list_data = pd.read_csv(r'C:\Users\crmai\Downloads\bipartite_GRN.csv')
 
-display = RocCurveDisplay.from_predictions(
-    y_onehot_test[:, class_id],
-    y_score[:, class_id],
-    name=f"{class_of_interest} vs the rest",
-    color="darkorange",
-    plot_chance_level=True,
-    despine=True,
-)
-_ = display.ax_.set(
-    xlabel="False Positive Rate",
-    ylabel="True Positive Rate",
-    title="One-vs-Rest ROC curves:\nVirginica vs (Setosa & Versicolor)",
-)
+def edge_list_to_adjacency_matrix(edge_list_df, n_tfs=100, n_targets=100):
+    """
+    Convert an edge list to an adjacency matrix.
+    """
+    # Create empty adjacency matrix
+    adjacency_matrix = np.zeros((n_tfs, n_targets), dtype=bool)
+    
+    # Fill the adjacency matrix based on the edge list
+    # Assuming edge_list_df has columns [0, 1] for TF ID and target ID respectively
+    for _, row in edge_list_df.iterrows():
+        tf_id = row[0]
+        target_id = row[1]
+        
+        tf_idx = int(tf_id)
+        target_idx = int(target_id) - 100  # Adjust for target ID offset
+        
+        # Check indices are within bounds
+        if 0 <= tf_idx < n_tfs and 0 <= target_idx < n_targets:
+            adjacency_matrix[tf_idx, target_idx] = True
+        else:
+            print(f"Warning: Edge ({tf_id}, {target_id}) is out of bounds")
+    
+    # Create row and column labels
+    tf_labels = [f"TF_{i}" for i in range(n_tfs)]
+    target_labels = [f"Gene_{i+100}" for i in range(n_targets)]
+    
+    # Convert to DataFrame with proper labels
+    adjacency_df = pd.DataFrame(adjacency_matrix, 
+                               index=tf_labels,
+                               columns=target_labels)
+    
+    return adjacency_df
 
-# %%
-# ROC curve using micro-averaged OvR
-# ----------------------------------
-#
-# Micro-averaging aggregates the contributions from all the classes (using
-# :func:`numpy.ravel`) to compute the average metrics as follows:
-#
-# :math:`TPR=\frac{\sum_{c}TP_c}{\sum_{c}(TP_c + FN_c)}` ;
-#
-# :math:`FPR=\frac{\sum_{c}FP_c}{\sum_{c}(FP_c + TN_c)}` .
-#
-# We can briefly demo the effect of :func:`numpy.ravel`:
+# Create the adjacency matrix
+gold_standard = edge_list_to_adjacency_matrix(edge_list_data)
 
-print(f"y_score:\n{y_score[0:2,:]}")
-print()
-print(f"y_score.ravel():\n{y_score[0:2,:].ravel()}")
+print("Gold standard shape:", gold_standard.shape)
+print("Number of regulatory interactions:", gold_standard.values.sum())
+print("Network density:", gold_standard.values.sum() / (gold_standard.shape[0] * gold_standard.shape[1]))
 
-# %%
-# In a multi-class classification setup with highly imbalanced classes,
-# micro-averaging is preferable over macro-averaging. In such cases, one can
-# alternatively use a weighted macro-averaging, not demonstrated here.
+# Preview
+print("\nFirst 5 TFs, first 5 targets:")
+print(gold_standard.iloc[:5, :5])
 
-display = RocCurveDisplay.from_predictions(
-    y_onehot_test.ravel(),
-    y_score.ravel(),
-    name="micro-average OvR",
-    color="darkorange",
-    plot_chance_level=True,
-    despine=True,
-)
-_ = display.ax_.set(
-    xlabel="False Positive Rate",
-    ylabel="True Positive Rate",
-    title="Micro-averaged One-vs-Rest\nReceiver Operating Characteristic",
-)
+# For AUROC calculation, you'd need a weights matrix with the same shape
+def create_sample_weights_matrix(gold_standard, noise_level=0.3):
+    """Create a sample weights matrix similar to GENIE3 output."""
+    n_tfs, n_targets = gold_standard.shape
+    
+    # Initialize weights
+    weights = np.random.rand(n_tfs, n_targets) * 0.3  # Low weights for non-edges
+    
+    # Assign higher weights to true edges (with some noise)
+    true_edges = gold_standard.values
+    weights[true_edges] = 0.7 + np.random.rand(np.sum(true_edges)) * 0.3
+    
+    # Create DataFrame with same index/columns as gold standard
+    weights_df = pd.DataFrame(weights, 
+                            index=gold_standard.index,
+                            columns=gold_standard.columns)
+    
+    return weights_df
 
-# %%
-# In the case where the main interest is not the plot but the ROC-AUC score
-# itself, we can reproduce the value shown in the plot using
-# :class:`~sklearn.metrics.roc_auc_score`.
+# Create sample weights matrix
+weights_matrix = create_sample_weights_matrix(gold_standard)
 
+# Now calculate AUROC
 from sklearn.metrics import roc_auc_score
 
-micro_roc_auc_ovr = roc_auc_score(
-    y_test,
-    y_score,
-    multi_class="ovr",
-    average="micro",
-)
+# Flatten matrices
+y_true = gold_standard.values.flatten()
+y_scores = weights_matrix.values.flatten()
 
-print(f"Micro-averaged One-vs-Rest ROC AUC score:\n{micro_roc_auc_ovr:.2f}")
+# Calculate overall AUROC
+overall_auroc = roc_auc_score(y_true, y_scores)
+print(f"\nOverall AUROC: {overall_auroc:.4f}")
 
-# %%
-# This is equivalent to computing the ROC curve with
-# :class:`~sklearn.metrics.roc_curve` and then the area under the curve with
-# :class:`~sklearn.metrics.auc` for the raveled true and predicted classes.
+# Calculate AUROC per target gene
+def calculate_target_auroc(weights_matrix, gold_standard):
+    """Calculate AUROC for each target gene."""
+    auroc_per_target = {}
+    
+    for col in gold_standard.columns:
+        y_true = gold_standard[col].values
+        y_scores = weights_matrix[col].values
+        
+        # Skip if all examples are from one class
+        if np.all(y_true) or not np.any(y_true):
+            auroc_per_target[col] = np.nan
+            continue
+            
+        auroc = roc_auc_score(y_true, y_scores)
+        auroc_per_target[col] = auroc
+    
+    return pd.Series(auroc_per_target)
 
-from sklearn.metrics import auc, roc_curve
-
-# store the fpr, tpr, and roc_auc for all averaging strategies
-fpr, tpr, roc_auc = dict(), dict(), dict()
-# Compute micro-average ROC curve and ROC area
-fpr["micro"], tpr["micro"], _ = roc_curve(y_onehot_test.ravel(), y_score.ravel())
-roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
-
-print(f"Micro-averaged One-vs-Rest ROC AUC score:\n{roc_auc['micro']:.2f}")
+target_auroc = calculate_target_auroc(weights_matrix, gold_standard)
+print("\nAUROC per target gene (first 5):")
+print(target_auroc.head())
+print(f"Average AUROC across targets: {target_auroc.mean():.4f}")
